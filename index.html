@@ -40,7 +40,14 @@ h2,h3{margin:0 0 15px}.tabs{display:flex;gap:8px;margin-bottom:16px}.tab{border:
 <h2 id="formTitle">Add Employee</h2>
 <div class="formgrid">
 <div class="full"><label>Employee Name *</label><input id="empName" placeholder="e.g. Rahul Kumar"></div>
-<div><label>Monthly Salary *</label><input id="empSalary" type="number" min="0" step="0.01" placeholder="25000"></div>
+<div class="full"><label>Earnings Components</label><div class="notice" style="margin-top:0">The Total Salary is automatically calculated from all earnings below.</div></div>
+<div><label>Basic Salary</label><input id="empBasic" type="number" min="0" step="0.01" value="0"></div>
+<div><label>DA</label><input id="empDA" type="number" min="0" step="0.01" value="0"></div>
+<div><label>HRA</label><input id="empHRA" type="number" min="0" step="0.01" value="0"></div>
+<div><label>Conveyance Allowance</label><input id="empConveyance" type="number" min="0" step="0.01" value="0"></div>
+<div><label>Medical Allowance</label><input id="empMedical" type="number" min="0" step="0.01" value="0"></div>
+<div><label>Other Allowance</label><input id="empOtherAllowance" type="number" min="0" step="0.01" value="0"></div>
+<div class="full"><label>Total Salary</label><input id="empSalary" type="number" min="0" step="0.01" value="0" readonly></div>
 <div><label>Salary Currency</label><input id="empCurrency" value="₹" maxlength="4"></div>
 <div><label>Default Working Days</label><input id="empDefaultDays" type="number" min="1" value="26"></div>
 <div><label>Default Paid Leave</label><input id="empDefaultPaidLeave" type="number" min="0" value="0"></div>
@@ -69,6 +76,8 @@ h2,h3{margin:0 0 15px}.tabs{display:flex;gap:8px;margin-bottom:16px}.tab{border:
 <div><label>Paid Leave Days</label><input id="paidLeave" type="number" min="0" value="0"></div>
 <div><label>Extra Earnings</label><input id="extra" type="number" min="0" value="0"></div>
 <div><label>Other Deduction</label><input id="deduction" type="number" min="0" value="0"></div>
+<div><label>Professional Tax</label><input id="professionalTax" type="number" min="0" step="0.01" value="0"></div>
+<div><label>PF Deduction</label><input id="pf" type="number" min="0" step="0.01" value="0"></div>
 </div>
 <div class="actions"><button class="btn primary" id="calculate">Calculate Salary</button><button class="btn green" id="saveCalculatedMonth">💾 Save to History</button><button class="btn secondary" id="clearCalc">Clear</button></div>
 <div id="employeeResult" class="result hidden"></div>
@@ -127,6 +136,8 @@ h2,h3{margin:0 0 15px}.tabs{display:flex;gap:8px;margin-bottom:16px}.tab{border:
 <div><label>Paid Leave Days</label><input id="tmpPaid" type="number" min="0" value="0"></div>
 <div><label>Extra Earnings</label><input id="tmpExtra" type="number" min="0" value="0"></div>
 <div><label>Other Deduction</label><input id="tmpDeduction" type="number" min="0" value="0"></div>
+<div><label>Professional Tax</label><input id="tmpProfessionalTax" type="number" min="0" step="0.01" value="0"></div>
+<div><label>PF Deduction</label><input id="tmpPf" type="number" min="0" step="0.01" value="0"></div>
 </div>
 <div class="actions"><button class="btn primary" id="tmpCalculate">Calculate</button><button class="btn secondary" id="tmpClear">Clear</button></div>
 <div id="tmpResult" class="result hidden"></div>
@@ -170,12 +181,12 @@ function save(){
  render();
 }
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,8)}
-function calc(salary,working,leave,paid,extra,deduction){
+function calc(salary,working,leave,paid,extra,deduction,professionalTax=0,pf=0){
   working=Math.max(1,working); leave=Math.max(0,leave); paid=Math.min(Math.max(0,paid),leave);
-  const unpaid=Math.max(0,leave-paid);
-  const daily=salary/working, worked=Math.max(0,working-unpaid);
-  const base=daily*worked, net=Math.max(0,base+extra-deduction);
-  return {daily,unpaid,worked,base,net};
+  extra=Math.max(0,extra); deduction=Math.max(0,deduction); professionalTax=Math.max(0,professionalTax); pf=Math.max(0,pf);
+  const unpaid=Math.max(0,leave-paid), daily=salary/working, worked=Math.max(0,working-unpaid);
+  const base=daily*worked, totalDeductions=deduction+professionalTax+pf, net=Math.max(0,base+extra-totalDeductions);
+  return {daily,unpaid,worked,base,net,professionalTax,pf,totalDeductions};
 }
 function resultHTML(name,currency,r,working,leave,paid,extra,deduction){
  return `<div><strong>${name||'Salary Result'}</strong><div class="big">${money(r.net,currency)}</div></div>
@@ -185,9 +196,18 @@ function resultHTML(name,currency,r,working,leave,paid,extra,deduction){
  <div class="metric"><small>Unpaid Leave</small><strong>${r.unpaid}</strong></div>
  <div class="metric"><small>Base Salary</small><strong>${money(r.base,currency)}</strong></div>
  <div class="metric"><small>Extra Earnings</small><strong>${money(extra,currency)}</strong></div>
- <div class="metric"><small>Deduction</small><strong>${money(deduction,currency)}</strong></div>
+ <div class="metric"><small>Other Deduction</small><strong>${money(deduction,currency)}</strong></div>
+ <div class="metric"><small>Professional Tax</small><strong>${money(r.professionalTax,currency)}</strong></div>
+ <div class="metric"><small>PF</small><strong>${money(r.pf,currency)}</strong></div>
+ <div class="metric"><small>Total Deductions</small><strong>${money(r.totalDeductions,currency)}</strong></div>
  </div>
  <div class="notice">Formula: Daily rate = Monthly salary ÷ working days. Unpaid leave = leave − paid leave. Base salary = daily rate × (working days − unpaid leave).</div>`;
+}
+function normalizeEmployees(){
+ employees=employees.map(e=>{
+   const basic=Number(e.basic ?? e.salary ?? 0), da=Number(e.da||0), hra=Number(e.hra||0), conveyance=Number(e.conveyance||0), medical=Number(e.medical||0), otherAllowance=Number(e.otherAllowance||0);
+   return {...e,basic,da,hra,conveyance,medical,otherAllowance,salary:(basic+da+hra+conveyance+medical+otherAllowance)};
+ });
 }
 function render(){
  const q=$('search').value.toLowerCase();
@@ -196,7 +216,7 @@ function render(){
  if(!filtered.length){$('employeeList').innerHTML='<div class="empty">No saved employees yet.</div>'}
  filtered.forEach(e=>{
   const d=document.createElement('div');d.className='employee';
-  d.innerHTML=`<div><div class="empname">${escapeHtml(e.name)}</div><div class="empsub">${money(e.salary,e.currency)} / month • ${e.defaultDays} working days • ${e.defaultPaidLeave} paid leave</div></div>
+  d.innerHTML=`<div><div class="empname">${escapeHtml(e.name)}</div><div class="empsub">${money(e.salary,e.currency)} total / month • ${e.defaultDays} working days • ${e.defaultPaidLeave} paid leave</div><div class="empsub">Basic ${money(e.basic||0,e.currency)} • DA ${money(e.da||0,e.currency)} • HRA ${money(e.hra||0,e.currency)} • Conveyance ${money(e.conveyance||0,e.currency)} • Medical ${money(e.medical||0,e.currency)} • Other ${money(e.otherAllowance||0,e.currency)}</div></div>
   <div class="empactions"><button class="iconbtn" title="Use" onclick="useEmployee('${e.id}')">▶</button><button class="iconbtn" title="Edit" onclick="editEmployee('${e.id}')">✏️</button><button class="iconbtn" title="Delete" onclick="deleteEmployee('${e.id}')">🗑️</button></div>`;
   $('employeeList').appendChild(d);
  });
@@ -213,7 +233,7 @@ function loadSelected(){
 function editEmployee(id){
  const e=employees.find(x=>x.id===id);if(!e)return;
  editingId=id;$('formTitle').textContent='Edit Employee';$('saveEmployee').textContent='💾 Update Employee';$('cancelEdit').classList.remove('hidden');
- $('empName').value=e.name;$('empSalary').value=e.salary;$('empCurrency').value=e.currency;$('empDefaultDays').value=e.defaultDays;$('empDefaultPaidLeave').value=e.defaultPaidLeave;
+ $('empName').value=e.name;$('empBasic').value=e.basic||e.salary||0;$('empDA').value=e.da||0;$('empHRA').value=e.hra||0;$('empConveyance').value=e.conveyance||0;$('empMedical').value=e.medical||0;$('empOtherAllowance').value=e.otherAllowance||0;updateEmployeeTotal();$('empCurrency').value=e.currency;$('empDefaultDays').value=e.defaultDays;$('empDefaultPaidLeave').value=e.defaultPaidLeave;
  window.scrollTo({top:0,behavior:'smooth'});
 }
 
@@ -257,7 +277,7 @@ function renderHistory(){
      d.innerHTML=`<div>
        <div class="empname">${escapeHtml(name)}</div>
        <div class="empsub">Working: ${r.workingDays} • Leave: ${r.leaveDays} • Paid Leave: ${r.paidLeave} • Unpaid Leave: ${r.unpaidLeave}</div>
-       <div class="empsub">Salary: <strong>${money(r.finalSalary,currency)}</strong> • Extra: ${money(r.extra,currency)} • Deduction: ${money(r.deduction,currency)}</div>
+       <div class="empsub">Salary: <strong>${money(r.finalSalary,currency)}</strong> • Extra: ${money(r.extra,currency)} • Other Deduction: ${money(r.deduction,currency)}</div><div class="empsub">Professional Tax: ${money(r.professionalTax||0,currency)} • PF: ${money(r.pf||0,currency)} • Total Deductions: ${money(r.totalDeductions||0,currency)}</div>
      </div>
      <div class="empactions"><button class="iconbtn" title="Delete record" onclick="deleteHistory('${r.id}')">🗑️</button></div>`;
      list.appendChild(d);
@@ -278,20 +298,25 @@ function deleteHistory(id){
 function clearHistoryForm(){
  $('historyEmployee').value='';$('historyMonth').value='';$('historySalary').value='';
  $('historyWorking').value=26;$('historyLeave').value=0;$('historyPaid').value=0;
- $('historyExtra').value=0;$('historyDeduction').value=0;$('historyFinal').value='';
+ $('historyExtra').value=0;$('historyDeduction').value=0;$('historyProfessionalTax').value=0;$('historyPf').value=0;$('historyFinal').value='';
 }
 function loadHistoryEmployee(){
  const e=employees.find(x=>x.id===$('historyEmployee').value);if(!e)return;
  $('historySalary').value=e.salary;$('historyWorking').value=e.defaultDays;
  $('historyLeave').value=0;$('historyPaid').value=e.defaultPaidLeave;
- $('historyExtra').value=0;$('historyDeduction').value=0;$('historyFinal').value='';
+ $('historyExtra').value=0;$('historyDeduction').value=0;$('historyProfessionalTax').value=0;$('historyPf').value=0;$('historyFinal').value='';
 }
-function resetForm(){editingId=null;$('formTitle').textContent='Add Employee';$('saveEmployee').textContent='➕ Save Employee';$('cancelEdit').classList.add('hidden');['empName','empSalary'].forEach(x=>$(x).value='');$('empCurrency').value='₹';$('empDefaultDays').value=26;$('empDefaultPaidLeave').value=0}
+function resetForm(){editingId=null;$('formTitle').textContent='Add Employee';$('saveEmployee').textContent='➕ Save Employee';$('cancelEdit').classList.add('hidden');['empName'].forEach(x=>$(x).value='');['empBasic','empDA','empHRA','empConveyance','empMedical','empOtherAllowance'].forEach(x=>$(x).value=0);updateEmployeeTotal();$('empCurrency').value='₹';$('empDefaultDays').value=26;$('empDefaultPaidLeave').value=0}
 function deleteEmployee(id){const e=employees.find(x=>x.id===id);if(confirm(`Delete ${e?.name||'this employee'}?`)){employees=employees.filter(x=>x.id!==id);save()}}
+function updateEmployeeTotal(){
+ const total=['empBasic','empDA','empHRA','empConveyance','empMedical','empOtherAllowance'].reduce((sum,id)=>sum+Math.max(0,num(id)),0);
+ $('empSalary').value=total.toFixed(2);
+}
+['empBasic','empDA','empHRA','empConveyance','empMedical','empOtherAllowance'].forEach(id=>$(id).addEventListener('input',updateEmployeeTotal));
 $('saveEmployee').onclick=()=>{
- const name=$('empName').value.trim(), salary=num('empSalary');
- if(!name||salary<0){alert('Please enter a valid employee name and salary.');return}
- const data={name,salary,currency:$('empCurrency').value.trim()||'₹',defaultDays:Math.max(1,num('empDefaultDays')),defaultPaidLeave:Math.max(0,num('empDefaultPaidLeave'))};
+ const name=$('empName').value.trim(); updateEmployeeTotal(); const salary=num('empSalary');
+ if(!name||salary<=0){alert('Please enter an employee name and at least one earning amount.');return}
+ const data={name,salary,currency:$('empCurrency').value.trim()||'₹',basic:num('empBasic'),da:num('empDA'),hra:num('empHRA'),conveyance:num('empConveyance'),medical:num('empMedical'),otherAllowance:num('empOtherAllowance'),defaultDays:Math.max(1,num('empDefaultDays')),defaultPaidLeave:Math.max(0,num('empDefaultPaidLeave'))};
  if(editingId) employees=employees.map(e=>e.id===editingId?{...e,...data}:e); else employees.push({id:uid(),...data,createdAt:new Date().toISOString()});
  resetForm();save();
 };
@@ -300,7 +325,7 @@ $('search').oninput=render;
 $('employeeSelect').onchange=loadSelected;
 $('calculate').onclick=()=>{
  const e=employees.find(x=>x.id===$('employeeSelect').value);if(!e){alert('Select an employee first.');return}
- const r=calc(e.salary,num('workingDays'),num('leaveDays'),num('paidLeave'),num('extra'),num('deduction'));
+ const r=calc(e.salary,num('workingDays'),num('leaveDays'),num('paidLeave'),num('extra'),num('deduction'),num('professionalTax'),num('pf'));
  $('employeeResult').innerHTML=resultHTML(e.name,e.currency,r,num('workingDays'),num('leaveDays'),num('paidLeave'),num('extra'),num('deduction'));$('employeeResult').classList.remove('hidden');
 };
 $('saveCalculatedMonth').onclick=()=>{
@@ -309,21 +334,21 @@ $('saveCalculatedMonth').onclick=()=>{
  if(!e){alert('Select an employee first.');return}
  if(!month){alert('Please select a salary month before saving.');return}
  const salary=e.salary,working=Math.max(1,num('workingDays')),leave=Math.max(0,num('leaveDays'));
- const paid=Math.min(Math.max(0,num('paidLeave')),leave),extra=Math.max(0,num('extra')),deduction=Math.max(0,num('deduction'));
- const r=calc(salary,working,leave,paid,extra,deduction);
+ const paid=Math.min(Math.max(0,num('paidLeave')),leave),extra=Math.max(0,num('extra')),deduction=Math.max(0,num('deduction')),professionalTax=Math.max(0,num('professionalTax')),pf=Math.max(0,num('pf'));
+ const r=calc(salary,working,leave,paid,extra,deduction,professionalTax,pf);
  const duplicate=salaryHistory.find(x=>x.employeeId===e.id&&x.month===month);
  if(duplicate && !confirm('A salary history record already exists for this employee and month. Add another record anyway?')) return;
- salaryHistory.push({id:uid(),employeeId:e.id,employeeName:e.name,month,salary,workingDays:working,leaveDays:leave,paidLeave:paid,unpaidLeave:r.unpaid,extra,deduction,finalSalary:r.net,createdAt:new Date().toISOString(),currency:e.currency});
+ salaryHistory.push({id:uid(),employeeId:e.id,employeeName:e.name,month,salary,workingDays:working,leaveDays:leave,paidLeave:paid,unpaidLeave:r.unpaid,extra,deduction,professionalTax,pf,totalDeductions:r.totalDeductions,finalSalary:r.net,createdAt:new Date().toISOString(),currency:e.currency});
  save();
  alert(`Salary for ${formatMonth(month)} saved to history.`);
 };
 $('clearCalc').onclick=()=>{$('employeeResult').classList.add('hidden');$('calcMonth').value='';};
 $('tmpCalculate').onclick=()=>{
  const salary=num('tmpSalary');if(salary<0||!salary){alert('Enter a valid salary.');return}
- const r=calc(salary,num('tmpWorking'),num('tmpLeave'),num('tmpPaid'),num('tmpExtra'),num('tmpDeduction'));
+ const r=calc(salary,num('tmpWorking'),num('tmpLeave'),num('tmpPaid'),num('tmpExtra'),num('tmpDeduction'),num('tmpProfessionalTax'),num('tmpPf'));
  $('tmpResult').innerHTML=resultHTML($('tmpName').value.trim()||'Temporary Calculation',$('tmpCurrency').value.trim()||'₹',r,num('tmpWorking'),num('tmpLeave'),num('tmpPaid'),num('tmpExtra'),num('tmpDeduction'));$('tmpResult').classList.remove('hidden');
 };
-$('tmpClear').onclick=()=>{$('tmpResult').classList.add('hidden');document.querySelectorAll('#temporary input').forEach(i=>{if(i.id!=='tmpCurrency'&&i.id!=='tmpWorking')i.value=''});$('tmpCurrency').value='₹';$('tmpWorking').value=26;$('tmpLeave').value=0;$('tmpPaid').value=0;$('tmpExtra').value=0;$('tmpDeduction').value=0};
+$('tmpClear').onclick=()=>{$('tmpResult').classList.add('hidden');document.querySelectorAll('#temporary input').forEach(i=>{if(i.id!=='tmpCurrency'&&i.id!=='tmpWorking')i.value=''});$('tmpCurrency').value='₹';$('tmpWorking').value=26;$('tmpLeave').value=0;$('tmpPaid').value=0;$('tmpExtra').value=0;$('tmpDeduction').value=0;$('tmpProfessionalTax').value=0;$('tmpPf').value=0};
 document.querySelectorAll('.tab').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));btn.classList.add('active');document.querySelectorAll('.tabpage').forEach(x=>x.classList.add('hidden'));$(btn.dataset.tab).classList.remove('hidden')});
 $('exportBtn').onclick=()=>{
  const data={app:'Salary Manager',version:2,exportedAt:new Date().toISOString(),employees,salaryHistory};
@@ -376,12 +401,12 @@ $('addHistory').onclick=()=>{
  const duplicate=salaryHistory.find(x=>x.employeeId===employeeId&&x.month===month);
  if(duplicate && !confirm('A salary record already exists for this employee and month. Add another record anyway?')) return;
  const e=employees.find(x=>x.id===employeeId);
- const r=calc(salary,working,leave,paid,extra,deduction);
+ const r=calc(salary,working,leave,paid,extra,deduction,professionalTax,pf);
  const manual=$('historyFinal').value.trim();
  salaryHistory.push({
    id:uid(),employeeId,employeeName:e?.name||'',month,salary,
    workingDays:working,leaveDays:leave,paidLeave:paid,unpaidLeave:r.unpaid,
-   extra,deduction,finalSalary:manual===''?r.net:Number(manual),
+   extra,deduction,professionalTax,pf,totalDeductions:r.totalDeductions,finalSalary:manual===''?r.net:Number(manual),
    createdAt:new Date().toISOString(),currency:e?.currency||'₹'
  });
  save();clearHistoryForm();
@@ -389,10 +414,10 @@ $('addHistory').onclick=()=>{
 };
 
 $('exportHistoryCsv').onclick=()=>{
- const rows=[['Month','Employee','Monthly Salary','Working Days','Leave Days','Paid Leave','Unpaid Leave','Extra Earnings','Deduction','Final Salary']];
+ const rows=[['Month','Employee','Monthly Salary','Basic','DA','HRA','Conveyance','Medical','Other Allowance','Working Days','Leave Days','Paid Leave','Unpaid Leave','Extra Earnings','Other Deduction','Professional Tax','PF','Total Deductions','Final Salary']];
  salaryHistory.slice().sort((a,b)=>(a.month||'').localeCompare(b.month||'')).forEach(r=>{
    const e=employees.find(x=>x.id===r.employeeId);
-   rows.push([r.month,e?.name||r.employeeName||'Deleted Employee',r.salary,r.workingDays,r.leaveDays,r.paidLeave,r.unpaidLeave,r.extra,r.deduction,r.finalSalary]);
+   rows.push([r.month,e?.name||r.employeeName||'Deleted Employee',r.salary,e?.basic||0,e?.da||0,e?.hra||0,e?.conveyance||0,e?.medical||0,e?.otherAllowance||0,r.workingDays,r.leaveDays,r.paidLeave,r.unpaidLeave,r.extra,r.deduction,r.professionalTax||0,r.pf||0,r.totalDeductions||0,r.finalSalary]);
  });
  const csv=rows.map(row=>row.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\\n');
  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}),a=document.createElement('a');
@@ -402,7 +427,7 @@ $('printHistory').onclick=()=>window.print();
 
 if(!$('calcMonth').value){$('calcMonth').value=new Date().toISOString().slice(0,7);}
 if(!$('historyMonth').value){$('historyMonth').value=new Date().toISOString().slice(0,7);}
-render();
+normalizeEmployees(); updateEmployeeTotal(); render();
 </script>
 </body>
 </html>
